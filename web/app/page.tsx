@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Prism from "@/components/Prism";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const API = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 
 type Source = { source: string; chunk: number };
 type Msg = { role: "user" | "bot"; text: string; sources?: Source[] };
