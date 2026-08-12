@@ -4,3 +4,4 @@ pypdf
 chromadb
 google-genai
 python-multipart
+rank_bm25

@@ -19,12 +19,29 @@ export default function Home() {
   const [question, setQuestion] = useState("");
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
+  const [documents, setDocuments] = useState<string[]>([]);
+  const [source, setSource] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
+
+  async function loadDocuments() {
+    try {
+      const res = await fetch(`${API}/documents`);
+      const data = await res.json();
+      setDocuments(data.documents ?? []);
+    } catch {
+      /* ponytail: filter row just stays hidden if the backend is down */
+    }
+  }
+
+  useEffect(() => {
+    loadDocuments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function upload(file: File) {
     setStatus(`Uploading ${file.name}…`);
@@ -34,7 +51,8 @@ export default function Home() {
       const res = await fetch(`${API}/ingest`, { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail);
-      setStatus(`✓ ${data.filename} — ${data.chunks_stored} chunks indexed`);
+      setStatus(`✓ ${data.filename} is ready to chat`);
+      loadDocuments();
     } catch (e) {
       setStatus(`✕ ${e instanceof Error ? e.message : "upload failed"}`);
     }
@@ -44,19 +62,44 @@ export default function Home() {
     const q = (text ?? question).trim();
     if (!q || busy) return;
     setQuestion("");
-    setMessages((m) => [...m, { role: "user", text: q }]);
+    const history = messages.slice(-6).map(({ role, text }) => ({ role, text }));
+    setMessages((m) => [...m, { role: "user", text: q }, { role: "bot", text: "" }]);
     setBusy(true);
+
+    // mutate the last (bot) message in place via functional updates
+    const patchBot = (fn: (b: Msg) => Msg) =>
+      setMessages((m) => [...m.slice(0, -1), fn(m[m.length - 1])]);
+
     try {
-      const res = await fetch(`${API}/ask`, {
+      const res = await fetch(`${API}/ask/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: q }),
+        body: JSON.stringify({ question: q, history, source }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail);
-      setMessages((m) => [...m, { role: "bot", text: data.answer, sources: data.sources }]);
+      if (!res.ok || !res.body) {
+        const detail = await res.text().catch(() => "");
+        throw new Error(detail || `request failed (${res.status})`);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? ""; // keep partial line for next chunk
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          const ev = JSON.parse(line.slice(5).trim());
+          if (ev.type === "token") patchBot((b) => ({ ...b, text: b.text + ev.text }));
+          else if (ev.type === "sources") patchBot((b) => ({ ...b, sources: ev.sources }));
+          else if (ev.type === "error") throw new Error(ev.detail);
+        }
+      }
     } catch (e) {
-      setMessages((m) => [...m, { role: "bot", text: `✕ ${e instanceof Error ? e.message : "request failed"}` }]);
+      const msg = `✕ ${e instanceof Error ? e.message : "request failed"}`;
+      patchBot((b) => ({ ...b, text: b.text ? `${b.text}\n${msg}` : msg }));
     } finally {
       setBusy(false);
     }
@@ -99,7 +142,7 @@ export default function Home() {
 
         {!empty && (
           <section style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 24 }}>
-            {messages.map((m, i) => (
+            {messages.filter((m) => m.text || m.sources).map((m, i) => (
               <div key={i} className="rise" style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "88%" }}>
                 <div
                   className={m.role === "bot" ? "card" : ""}
@@ -116,16 +159,16 @@ export default function Home() {
                 </div>
                 {m.sources && m.sources.length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                    {[...new Map(m.sources.map((s) => [`${s.source}#${s.chunk}`, s])).values()].map((s) => (
-                      <span key={`${s.source}#${s.chunk}`} className="card" style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 999, color: "var(--muted)" }}>
-                        📄 {s.source} · chunk {s.chunk}
+                    {[...new Set(m.sources.map((s) => s.source))].map((name) => (
+                      <span key={name} className="card" style={{ fontSize: 11.5, padding: "4px 10px", borderRadius: 999, color: "var(--muted)" }}>
+                        📄 {name}
                       </span>
                     ))}
                   </div>
                 )}
               </div>
             ))}
-            {busy && (
+            {busy && !messages[messages.length - 1]?.text && (
               <div className="card rise" style={{ alignSelf: "flex-start", padding: "12px 18px", display: "flex", gap: 5 }}>
                 <span className="dot">●</span>
                 <span className="dot">●</span>
@@ -134,6 +177,24 @@ export default function Home() {
             )}
             <div ref={endRef} />
           </section>
+        )}
+
+        {documents.length > 0 && (
+          <div className="rise" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+            {[null, ...documents].map((doc) => {
+              const active = source === doc;
+              return (
+                <button
+                  key={doc ?? "__all__"}
+                  className="attach"
+                  onClick={() => setSource(doc)}
+                  style={active ? { borderColor: "var(--mint)", color: "var(--mint)", background: "rgba(46, 230, 200, 0.08)" } : undefined}
+                >
+                  {doc ?? "All documents"}
+                </button>
+              );
+            })}
+          </div>
         )}
 
         {/* composer */}

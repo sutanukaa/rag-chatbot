@@ -1,0 +1,5 @@
+venv/
+chroma_db/
+web/
+.git/
+__pycache__/
