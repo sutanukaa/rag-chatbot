@@ -58,13 +58,13 @@ curl -X POST http://127.0.0.1:8000/ask -H "Content-Type: application/json" -d "{
 
 ## Evaluation
 
-`eval.py` checks retrieval quality against the running API (start it first with `uvicorn main:app`):
+`eval.py` is a **synthetic eval**: it samples chunks from whatever documents are currently ingested, has Gemini generate a factual question + expected keywords from each chunk, then asks the running API and checks (a) keyword recall in the answer and (b) whether the chunk's own source document was cited. No hardcoded questions — it works on anyone's PDFs.
 
 ```bash
-venv\Scripts\python.exe eval.py
+venv\Scripts\python.exe eval.py     # API must be running (uvicorn main:app)
 ```
 
-Edit `EVAL_SET` in `eval.py` — replace the placeholder entries with questions about your own ingested documents. Per question it reports keyword recall (expected keywords found in the answer) and whether the expected source file was cited. Exits nonzero if overall keyword recall is below 50%, so it can gate CI. Point at another API with `RAG_API=http://host:port`.
+Env vars: `RAG_API` (default http://127.0.0.1:8000), `EVAL_N` (questions, default 8). Exits nonzero if keyword recall < 50%, so it can gate CI.
 
 ## Run with Docker
 

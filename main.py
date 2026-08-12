@@ -19,7 +19,8 @@ from pypdf import PdfReader
 from rank_bm25 import BM25Okapi
 
 EMBED_MODEL = "gemini-embedding-001"
-CHAT_MODEL = "gemini-flash-latest"  # alias — survives model retirements
+# lite default: free-tier quota on full flash is ~20 req/day; override for prod
+CHAT_MODEL = os.environ.get("CHAT_MODEL", "gemini-flash-lite-latest")
 LITE_MODEL = "gemini-flash-lite-latest"  # rerank + query rewrite
 CHUNK_SIZE = 1000      # characters per chunk
 CHUNK_OVERLAP = 200    # overlap so sentences aren't cut off between chunks
