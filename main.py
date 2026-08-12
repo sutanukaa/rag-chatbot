@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from pypdf import PdfReader
 
 EMBED_MODEL = "gemini-embedding-001"
-CHAT_MODEL = "gemini-2.5-flash"
+CHAT_MODEL = "gemini-flash-latest"  # alias — survives model retirements
 CHUNK_SIZE = 1000      # characters per chunk
 CHUNK_OVERLAP = 200    # overlap so sentences aren't cut off between chunks
 TOP_K = 5
