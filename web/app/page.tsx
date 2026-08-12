@@ -7,6 +7,7 @@ const API = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 type Source = { source: string; chunk: number };
 type Msg = { role: "user" | "bot"; text: string; sources?: Source[] };
+type Chat = { id: string; title: string; messages: Msg[]; updated: number };
 
 const SUGGESTIONS = [
   { tag: "Summarize", tagBg: "#bfe3ff", desc: "Give me a summary of this document" },
@@ -14,7 +15,11 @@ const SUGGESTIONS = [
   { tag: "Explain", tagBg: "#c8f5b8", desc: "Explain the main topic in simple terms" },
 ];
 
+const newId = () => Math.random().toString(36).slice(2, 10);
+
 export default function Home() {
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [chatId, setChatId] = useState(newId);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [question, setQuestion] = useState("");
   const [status, setStatus] = useState("");
@@ -27,6 +32,50 @@ export default function Home() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
+
+  // chat history persistence (localStorage)
+  useEffect(() => {
+    try {
+      setChats(JSON.parse(localStorage.getItem("rag_chats") ?? "[]"));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (messages.length === 0) return;
+    setChats((prev) => {
+      const title = messages.find((m) => m.role === "user")?.text.slice(0, 42) || "New chat";
+      const rest = prev.filter((c) => c.id !== chatId);
+      const next = [{ id: chatId, title, messages, updated: Date.now() }, ...rest].slice(0, 50);
+      try {
+        localStorage.setItem("rag_chats", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, [messages, chatId]);
+
+  function newChat() {
+    if (busy) return;
+    setChatId(newId());
+    setMessages([]);
+    setStatus("");
+  }
+
+  function openChat(c: Chat) {
+    if (busy) return;
+    setChatId(c.id);
+    setMessages(c.messages);
+  }
+
+  function deleteChat(id: string) {
+    setChats((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      try {
+        localStorage.setItem("rag_chats", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+    if (id === chatId) newChat();
+  }
 
   async function loadDocuments() {
     try {
@@ -115,7 +164,37 @@ export default function Home() {
         <Prism animationType="3drotate" timeScale={0.35} scale={2.6} glow={1.4} bloom={1.2} noise={0.06} hueShift={0.35} colorFrequency={0.85} suspendWhenOffscreen />
       </div>
 
-      <main style={{ position: "relative", zIndex: 1, maxWidth: 780, margin: "0 auto", padding: "0 20px 60px", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      {/* sidebar: new chat + history */}
+      <aside className="sidebar">
+        <button className="new-chat" onClick={newChat}>
+          <span style={{ fontSize: 17, lineHeight: 1 }}>＋</span> New chat
+        </button>
+        <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--muted)", margin: "18px 6px 8px" }}>
+          History
+        </div>
+        <div style={{ overflowY: "auto", flex: 1 }}>
+          {chats.length === 0 && (
+            <div style={{ fontSize: 12.5, color: "var(--muted)", padding: "4px 6px" }}>No chats yet</div>
+          )}
+          {chats.map((c) => (
+            <div key={c.id} className={`chat-item ${c.id === chatId ? "active" : ""}`} onClick={() => openChat(c)}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{c.title}</span>
+              <button
+                className="chat-del"
+                aria-label="Delete chat"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteChat(c.id);
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      </aside>
+
+      <main className="content" style={{ position: "relative", zIndex: 1, maxWidth: 780, margin: "0 auto", padding: "0 20px 60px", minHeight: "100vh", display: "flex", flexDirection: "column" }}>
         <div style={{ flex: empty ? "0 0 30vh" : "0 0 8vh" }} />
 
         {empty && (
@@ -207,11 +286,22 @@ export default function Home() {
             onKeyDown={(e) => e.key === "Enter" && ask()}
             placeholder="Ask me anything……"
           />
-          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <button className="attach" onClick={() => fileRef.current?.click()}>
               🖇 Attach file
             </button>
-            <button className="send" onClick={() => ask()} disabled={busy} aria-label="Send">↑</button>
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s.tag}
+                className="attach"
+                style={{ borderColor: "transparent", background: s.tagBg + "22", color: "var(--text)" }}
+                onClick={() => ask(s.desc)}
+                disabled={busy}
+              >
+                {s.tag}
+              </button>
+            ))}
+            <button className="send" onClick={() => ask()} disabled={busy} aria-label="Send" style={{ marginLeft: "auto" }}>↑</button>
           </div>
           <input ref={fileRef} type="file" accept=".pdf" style={{ display: "none" }} onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
           {status && (
