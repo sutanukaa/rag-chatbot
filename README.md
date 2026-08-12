@@ -34,6 +34,21 @@ Then open http://127.0.0.1:8000/docs for the interactive API UI.
 | `/ask` | POST | `{"question": "..."}` | answer + cited sources |
 | `/` | GET | — | health + chunk count |
 
+## Web UI (Next.js)
+
+```bash
+cd web
+npm install
+npm run dev          # http://localhost:3000 — expects the API on :8000
+```
+
+Set `NEXT_PUBLIC_API_URL` (see `web/.env.local.example`) to point at the API.
+
+## Deploy
+
+- **Frontend** (`web/`): Vercel — set root directory to `web` and `NEXT_PUBLIC_API_URL` to your API's URL.
+- **Backend** (`main.py`): Render / Railway / EC2 — start command `uvicorn main:app --host 0.0.0.0 --port $PORT`, env vars `GEMINI_API_KEY` and `ALLOWED_ORIGINS=https://your-frontend.vercel.app`.
+
 ## Example
 
 ```bash

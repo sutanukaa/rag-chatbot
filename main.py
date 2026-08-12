@@ -8,6 +8,7 @@ import os
 
 import chromadb
 from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from pydantic import BaseModel
 from pypdf import PdfReader
@@ -19,6 +20,12 @@ CHUNK_OVERLAP = 200    # overlap so sentences aren't cut off between chunks
 TOP_K = 5
 
 app = FastAPI(title="RAG Document Q&A")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.environ.get("ALLOWED_ORIGINS", "*").split(","),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 gemini = genai.Client()  # reads GEMINI_API_KEY env var
 db = chromadb.PersistentClient(path=os.path.join(os.path.dirname(__file__), "chroma_db"))
 collection = db.get_or_create_collection("documents")
