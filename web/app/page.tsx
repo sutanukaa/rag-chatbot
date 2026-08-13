@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { signIn, signOut, useSession } from "next-auth/react";
 import Prism from "@/components/Prism";
 import ReactMarkdown from "react-markdown";
 
@@ -19,6 +20,7 @@ const SUGGESTIONS = [
 const newId = () => Math.random().toString(36).slice(2, 10);
 
 export default function Home() {
+  const { data: session, status: authStatus } = useSession();
   const [chats, setChats] = useState<Chat[]>([]);
   const [chatId, setChatId] = useState(newId);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -34,25 +36,44 @@ export default function Home() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, busy]);
 
-  // chat history persistence (localStorage)
+  // chat history: server is the source of truth (per account),
+  // per-account localStorage is the offline/backend-down fallback
+  const email = session?.user?.email ?? "";
+  const storageKey = `rag_chats_${email}`;
+
   useEffect(() => {
+    if (!email) return;
     try {
-      setChats(JSON.parse(localStorage.getItem("rag_chats") ?? "[]"));
+      setChats(JSON.parse(localStorage.getItem(storageKey) ?? "[]"));
     } catch {}
-  }, []);
+    fetch("/api/chats")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d?.chats && setChats(d.chats))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email]);
 
   useEffect(() => {
     if (messages.length === 0) return;
+    const title = messages.find((m) => m.role === "user")?.text.slice(0, 42) || "New chat";
+    const chat = { id: chatId, title, messages, updated: Date.now() };
     setChats((prev) => {
-      const title = messages.find((m) => m.role === "user")?.text.slice(0, 42) || "New chat";
-      const rest = prev.filter((c) => c.id !== chatId);
-      const next = [{ id: chatId, title, messages, updated: Date.now() }, ...rest].slice(0, 50);
+      const next = [chat, ...prev.filter((c) => c.id !== chatId)].slice(0, 50);
       try {
-        localStorage.setItem("rag_chats", JSON.stringify(next));
+        localStorage.setItem(storageKey, JSON.stringify(next));
       } catch {}
       return next;
     });
-  }, [messages, chatId]);
+    if (!busy) {
+      // sync to server once per turn (not per streamed token)
+      fetch("/api/chats", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(chat),
+      }).catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, chatId, busy]);
 
   function newChat() {
     if (busy) return;
@@ -71,10 +92,11 @@ export default function Home() {
     setChats((prev) => {
       const next = prev.filter((c) => c.id !== id);
       try {
-        localStorage.setItem("rag_chats", JSON.stringify(next));
+        localStorage.setItem(storageKey, JSON.stringify(next));
       } catch {}
       return next;
     });
+    fetch(`/api/chats?id=${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
     if (id === chatId) newChat();
   }
 
@@ -157,6 +179,32 @@ export default function Home() {
 
   const empty = messages.length === 0;
 
+  if (authStatus === "loading") return null;
+
+  if (!session) {
+    return (
+      <>
+        <div className="grid-bg" />
+        <div style={{ position: "fixed", top: "-18vh", left: 0, right: 0, height: "75vh", zIndex: 0, opacity: 0.85 }}>
+          <Prism animationType="3drotate" timeScale={0.35} scale={2.6} glow={1.4} bloom={1.2} noise={0.06} hueShift={0.35} colorFrequency={0.85} suspendWhenOffscreen />
+        </div>
+        <main style={{ position: "relative", zIndex: 1, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div className="card rise" style={{ padding: 36, maxWidth: 380, width: "100%", textAlign: "center" }}>
+            <div style={{ color: "var(--mint)", fontSize: 26, marginBottom: 10 }}>✦</div>
+            <h1 style={{ fontSize: 26, fontWeight: 600, letterSpacing: "-0.02em" }}>
+              Ask your documents<span style={{ color: "var(--mint)" }}>.</span>
+            </h1>
+            <p style={{ color: "var(--muted)", margin: "10px 0 24px", fontSize: 14 }}>
+              Sign in or sign up to continue — same button either way.
+            </p>
+            <button className="oauth" onClick={() => signIn("google")}>Continue with Google</button>
+            <button className="oauth" onClick={() => signIn("github")}>Continue with GitHub</button>
+          </div>
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="grid-bg" />
@@ -192,6 +240,18 @@ export default function Home() {
               </button>
             </div>
           ))}
+        </div>
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12, display: "flex", alignItems: "center", gap: 9 }}>
+          {session.user?.image && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={session.user.image} alt="" width={28} height={28} style={{ borderRadius: 999 }} />
+          )}
+          <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+            {session.user?.name ?? session.user?.email}
+          </span>
+          <button className="chat-del" style={{ opacity: 0.7, fontSize: 12 }} onClick={() => signOut()} title="Sign out">
+            ⎋
+          </button>
         </div>
       </aside>
 

@@ -241,6 +241,28 @@ textarea {
   50% { opacity: 1; }
 }
 
+.oauth {
+  display: block;
+  width: 100%;
+  padding: 11px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+
+.oauth + .oauth {
+  margin-top: 10px;
+}
+
+.oauth:hover {
+  border-color: rgba(46, 230, 200, 0.5);
+  background: rgba(46, 230, 200, 0.08);
+}
+
 /* markdown inside bot messages */
 .md > * + * { margin-top: 0.7em; }
 .md ul, .md ol { padding-left: 1.3em; }

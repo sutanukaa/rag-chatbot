@@ -8,9 +8,10 @@ import io
 import json
 import os
 import re
+import sqlite3
 
 import chromadb
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from google import genai
@@ -223,6 +224,67 @@ def ask_stream(q: Question):
             yield f"data: {json.dumps({'type': 'error', 'detail': str(e)})}\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream")
+
+
+# --- per-user chat history (called by the Next.js /api/chats proxy, which
+# resolves the user from the server-side session; browsers never hit this) ---
+# ponytail: shared-secret header auth; verify a signed session token if this API goes public
+CHATS_SECRET = os.environ.get("CHATS_SECRET", "dev-secret")
+CHATS_DB = os.path.join(os.path.dirname(__file__), "chats.sqlite3")
+
+
+def chats_conn():
+    conn = sqlite3.connect(CHATS_DB)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chats "
+        "(user TEXT, id TEXT, title TEXT, messages TEXT, updated INTEGER, "
+        "PRIMARY KEY (user, id))"
+    )
+    return conn
+
+
+def chats_user(x_user: str = Header(), x_chats_secret: str = Header()) -> str:
+    if x_chats_secret != CHATS_SECRET:
+        raise HTTPException(401, "Bad chats secret")
+    return x_user
+
+
+class ChatPayload(BaseModel):
+    id: str
+    title: str
+    messages: list
+    updated: int
+
+
+@app.get("/chats")
+def list_chats(user: str = Depends(chats_user)):
+    with chats_conn() as c:
+        rows = c.execute(
+            "SELECT id, title, messages, updated FROM chats WHERE user = ? "
+            "ORDER BY updated DESC LIMIT 50",
+            (user,),
+        ).fetchall()
+    return {"chats": [
+        {"id": r[0], "title": r[1], "messages": json.loads(r[2]), "updated": r[3]}
+        for r in rows
+    ]}
+
+
+@app.put("/chats")
+def save_chat(chat: ChatPayload, user: str = Depends(chats_user)):
+    with chats_conn() as c:
+        c.execute(
+            "INSERT OR REPLACE INTO chats VALUES (?, ?, ?, ?, ?)",
+            (user, chat.id, chat.title, json.dumps(chat.messages), chat.updated),
+        )
+    return {"ok": True}
+
+
+@app.delete("/chats/{chat_id}")
+def delete_chat(chat_id: str, user: str = Depends(chats_user)):
+    with chats_conn() as c:
+        c.execute("DELETE FROM chats WHERE user = ? AND id = ?", (user, chat_id))
+    return {"ok": True}
 
 
 @app.get("/")
