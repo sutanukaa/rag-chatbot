@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Prism from "@/components/Prism";
+import ReactMarkdown from "react-markdown";
 
 const API = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 
@@ -228,13 +229,13 @@ export default function Home() {
                   style={{
                     padding: "12px 16px",
                     borderRadius: 16,
-                    whiteSpace: "pre-wrap",
+                    whiteSpace: m.role === "user" ? "pre-wrap" : undefined,
                     lineHeight: 1.6,
                     fontSize: 15,
                     ...(m.role === "user" ? { background: "var(--mint)", color: "#05201b", fontWeight: 500 } : {}),
                   }}
                 >
-                  {m.text}
+                  {m.role === "bot" ? <div className="md"><ReactMarkdown>{m.text}</ReactMarkdown></div> : m.text}
                 </div>
                 {m.sources && m.sources.length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>

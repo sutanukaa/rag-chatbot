@@ -241,6 +241,28 @@ textarea {
   50% { opacity: 1; }
 }
 
+/* markdown inside bot messages */
+.md > * + * { margin-top: 0.7em; }
+.md ul, .md ol { padding-left: 1.3em; }
+.md li + li { margin-top: 0.25em; }
+.md code {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 0.9em;
+}
+.md pre {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  overflow-x: auto;
+}
+.md pre code { background: none; border: none; padding: 0; }
+.md h1, .md h2, .md h3 { font-size: 1.05em; }
+.md a { color: var(--mint); }
+
 .dot { animation: blink 1.2s infinite; color: var(--mint); }
 .dot:nth-child(2) { animation-delay: 0.2s; }
 .dot:nth-child(3) { animation-delay: 0.4s; }
